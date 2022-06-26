@@ -1,9 +1,10 @@
 import pandas as pd
 import logging
+import os
 import time
 from collections import namedtuple
 from getpass import getpass
-from os import getcwd
+from pyAesCrypt import decryptFile
 from relatorio_individual import gerar_relatorio_individual
 from selenium import webdriver
 from selenium.common.exceptions import NoSuchElementException
@@ -159,7 +160,7 @@ def inserir_data(index: Index, data: Data):
     tabela_dados['data'].append(list(data))
 
 # * Função principal
-def extrair_conexoes(nome, usuario, senha, perfis_busca_xlsx) -> tuple[str, pd.DataFrame]:
+def extrair_conexoes(nome, usuario, senha, usuarios_xlsx, perfis_busca_xlsx):
 
     # Abre o arquivo de perfis de busca e armazena em um DataFrame
     try:
@@ -175,6 +176,7 @@ def extrair_conexoes(nome, usuario, senha, perfis_busca_xlsx) -> tuple[str, pd.D
     try:
         driver = init_driver()
     except SessionNotCreatedException as e:
+        print(e.msg)
         logging.error("O chromedriver.exe está desatualizado. Baixe a versão correta em https://chromedriver.chromium.org/downloads")
         sys_exit()
 
@@ -233,13 +235,33 @@ def extrair_conexoes(nome, usuario, senha, perfis_busca_xlsx) -> tuple[str, pd.D
     return nome, conexoes_df
 
 if __name__ == '__main__':
-    nome, usuario, senha = None, None, None
-    while nome == None:
-        nome = input("Digite seu nome e aperte ENTER\n")
-    while usuario == None:
-        usuario = input("Digite seu login do LinkedIn e aperte ENTER\n")
-    while senha == None:
-        senha = getpass("Digite sua senha do LinkedIn e aperte ENTER\n")
-    perfis_busca_xlsx = getcwd()+"/Perfis de busca.xlsx"
-    nome, conexoes_df = extrair_conexoes(nome, usuario, senha, perfis_busca_xlsx)
-    gerar_relatorio_individual(nome, conexoes_df)
+
+    usuarios_xlsx = "Usuarios.xlsx"
+    perfis_busca_xlsx = "Perfis de busca.xlsx"
+    
+    # Decripta o arquivo de usuários
+    try:
+        decryptFile("Usuarios.xlsx.aes", "Usuarios.xlsx", "$$H7fDpjk&prJn3$")
+    except:
+        pass
+
+    # Abre o arquivo de usuários e armazena em um DataFrame
+    try:
+        usuarios_cols = ['Sócio', 'Login', 'Senha']
+        usuarios_df = pd.read_excel(usuarios_xlsx, engine='openpyxl', usecols=usuarios_cols)
+    except FileNotFoundError:
+        logging.error(f"{usuarios_xlsx} não foi encontrado")
+        sys_exit()
+    except KeyError:
+        logging.error(f"Nomes de colunas de {usuarios_xlsx} não correspondem com o esperado \n Colunas esperadas: {str(usuarios_cols)}")
+        sys_exit()
+
+    # Deleta o arquivo de usuários
+    try:
+        os.remove("Usuarios.xlsx")
+    except:
+        pass
+
+    for index, row in usuarios_df.iterrows():
+        nome, conexoes_df = extrair_conexoes(row['Sócio'], row['Login'], row['Senha'], usuarios_xlsx, perfis_busca_xlsx)
+        gerar_relatorio_individual(nome, conexoes_df)
